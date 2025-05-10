@@ -1,0 +1,9 @@
+[package]
+name = "ros2Antenna"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.97"
+rclrs = "0.4.1"
+serialport = "4.7.1"
