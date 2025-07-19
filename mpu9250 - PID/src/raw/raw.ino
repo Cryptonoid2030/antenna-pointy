@@ -10,7 +10,7 @@
 Servo myservo;
 
 // PID controller state
-float error;
+float PID_error;
 float integral = 0;
 float derivative;
 float previous_error = 0;
@@ -19,7 +19,7 @@ float kP = 0.15;
 float kI = 0.09;
 float kD = 0.2;
 
-float dt = 0.5; // fallback/default time step (seconds)
+float dt = 0.5;
 unsigned long lastTime = 0;
 
 int pwm = 0;
@@ -63,18 +63,18 @@ void loop()
   }
 
   // Calculate PID error with angle wrapping
-  error = angle - target_angle;
-  if (error > 180) error -= 360;
-  if (error < -180) error += 360;
+  PID_error = angle - target_angle;
+  if (PID_error > 180) PID_error -= 360;
+  if (PID_error < -180) PID_error += 360;
 
   // PID calculations
-  integral += error * dt;
+  integral += PID_error * dt;
   integral = constrain(integral, -100, 100); // Anti-windup
 
-  derivative = (error - previous_error) / dt;
-  previous_error = error;
+  derivative = (PID_error - previous_error) / dt;
+  previous_error = PID_error;
 
-  pwm = (int)(kP * error + kI * integral + kD * derivative);
+  pwm = (int)(kP * PID_error + kI * integral + kD * derivative);
   pwm = constrain(pwm, 0, 180);
 
   // Drive servo and output debug info
@@ -82,7 +82,7 @@ void loop()
   Serial.print("angle: ");
   Serial.print(angle);
   Serial.print(" error: ");
-  Serial.print(error);
+  Serial.print(PID_error);
   Serial.print(" PWM: ");
   Serial.println(pwm);
 
