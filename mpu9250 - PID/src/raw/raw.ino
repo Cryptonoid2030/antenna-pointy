@@ -4,20 +4,14 @@
 
 #include "Wire.h"
 #include "I2C.h"
-#include "inputs.h"
+#include "inputs.h"  // <-- target_angle should be defined here
 #include <Servo.h>
 
 Servo myservo;
 
-// Servo control setup
-unsigned long lastPrintMillis = 0;
-int pwm = 0; // reset PWM value
-int ledPin = 9;
-
-// PID controller setup
+// PID controller state
 float error;
-float integral;
-float dt = 0.5; // time between each read (s)
+float integral = 0;
 float derivative;
 float previous_error = 0;
 
@@ -25,67 +19,72 @@ float kP = 0.15;
 float kI = 0.09;
 float kD = 0.2;
 
+float dt = 0.5; // fallback/default time step (seconds)
+unsigned long lastTime = 0;
+
+int pwm = 0;
+int ledPin = 9;
+
 void setup()
 {
   Wire.begin();
   Serial.begin(9600);
 
-  I2CwriteByte(MPU9250_IMU_ADDRESS, 55, 0x02); // Set by pass mode for the magnetometers
-  I2CwriteByte(MPU9250_IMU_ADDRESS, 56, 0x01); // Enable interrupt pin for raw data
+  I2CwriteByte(MPU9250_IMU_ADDRESS, 55, 0x02); // Bypass mode for magnetometers
+  I2CwriteByte(MPU9250_IMU_ADDRESS, 56, 0x01); // Enable interrupt pin
 
   setMagnetometerAdjustmentValues();
 
-  //Start magnetometer
-  I2CwriteByte(MPU9250_MAG_ADDRESS, 0x0A, 0x12); // Request continuous magnetometer measurements in 16 bits (mode 1)
-  // pinMode(ledPin, OUTPUT);
+  // Start magnetometer
+  I2CwriteByte(MPU9250_MAG_ADDRESS, 0x0A, 0x12); // Continuous mode, 16-bit
+
   myservo.attach(9);
+  lastTime = millis();
 }
 
 void loop()
 {
-  unsigned long currentMillis = millis();
-  float angle;
-  int a; int b;
+  unsigned long now = millis();
+  dt = (now - lastTime) / 1000.0;
+  lastTime = now;
+
+  float angle = 0;
+  int a, b;
 
   if (isMagnetometerReady()) {
     readRawMagnetometer();
-
     normalize(magnetometer);
   }
 
-
-  angle = atan(normalized.magnetometer.y / normalized.magnetometer.x) * 180 / 3.14159;
-
-  a = normalized.magnetometer.x > 0; // x direction comparator
-  b = normalized.magnetometer.y > 0; // y direction comparator
-
-  // step 1: implement conversion to full circle
-  if (a && b) {// Q1
-      angle = angle;
-  } else if (!a && b) {// Q2
-      angle = 180. + angle;
-  } else if (!a && !b) {// Q3
-      angle = 180. + angle;
-  } else if (a && !b) {// Q4
-      angle = 360. + angle;
+  // Compute heading angle
+  angle = atan2(normalized.magnetometer.y, normalized.magnetometer.x) * 180 / 3.14159;
+  if (angle < 0) {
+    angle += 360;
   }
 
-  // Calculate PID terms
-  error = ((int) angle % 360) - target_angle; // calculate the error
-  integral += error * dt; // dt is the time difference between loops
+  // Calculate PID error with angle wrapping
+  error = angle - target_angle;
+  if (error > 180) error -= 360;
+  if (error < -180) error += 360;
+
+  // PID calculations
+  integral += error * dt;
+  integral = constrain(integral, -100, 100); // Anti-windup
+
   derivative = (error - previous_error) / dt;
   previous_error = error;
 
-  pwm = (int) (kP * error + kI * integral + kD * derivative) % 180; // PID sum cast as int
+  pwm = (int)(kP * error + kI * integral + kD * derivative);
+  pwm = constrain(pwm, 0, 180);
 
-  // Write results to serial - Remove if takes processing power
-  // analogWrite(ledPin, pwm);
+  // Drive servo and output debug info
   myservo.write(pwm);
   Serial.print("angle: ");
   Serial.print(angle);
   Serial.print(" error: ");
   Serial.print(error);
-  Serial.print(" Writing PWM: ");
+  Serial.print(" PWM: ");
   Serial.println(pwm);
-  delay(dt*1000);
+
+  delay(20); // Small delay to allow servo to settle
 }
