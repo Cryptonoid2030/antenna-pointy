@@ -17,7 +17,7 @@
 
 #define G 9.80665
 
-#define target_angle 0
+#define target_angle 0 // target bearing
 
 struct gyroscope_raw {
   int16_t x, y, z;
